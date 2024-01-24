@@ -5,15 +5,13 @@
 #include <math.h>
 #include <string.h>
 #include "ESP32Servo.h"
-#include "OrnibibBot.hpp"
-
-OrnibiBot robot;
-
 #define LEFT 21
 #define RIGHT 22
 
 Servo left_servo;
 Servo right_servo;
+
+float flapping_frequency;
 
 
 TaskHandle_t Task1;
@@ -37,8 +35,7 @@ void motorUpdate( void * pvParameters ){
   Serial.println(xPortGetCoreID());
   for(;;){
   
-  robot._flappingParam->frequency = 0.5;
-  uint16_t timing_signal = abs((int) (1000/robot._flappingParam->frequency));
+  uint16_t timing_signal = abs((int) (1000/flapping_frequency));
   // Serial.print(timing_signal);
   // Serial.print("\t");
   current_time = millis();
@@ -72,10 +69,10 @@ void motorUpdate( void * pvParameters ){
 void setup() {
   Serial.begin(115200);
   while(!Serial);
-	ESP32PWM::allocateTimer(0);
-	ESP32PWM::allocateTimer(1);
-	ESP32PWM::allocateTimer(2);
-	ESP32PWM::allocateTimer(3);
+	// ESP32PWM::allocateTimer(0);
+	// ESP32PWM::allocateTimer(1);
+	// ESP32PWM::allocateTimer(2);
+	// ESP32PWM::allocateTimer(3);
 
   left_servo.setPeriodHertz(50);
   left_servo.attach(LEFT, 800, 2200);
@@ -104,8 +101,7 @@ void setup() {
 }
 
 void loop() {
-
-
+    flapping_frequency = 2;
 }
 
 // void serialEvent(){
