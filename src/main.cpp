@@ -1,109 +1,100 @@
 #include <Arduino.h>
-#include <iostream>
-#include <memory>
-#include <unistd.h>
-#include <math.h>
-#include <string.h>
-#include "ESP32Servo.h"
-#define LEFT 21
-#define RIGHT 22
+#include <WiFi.h>
+#include <ESPAsyncWebServer.h>
+#include "driver/mcpwm.h"
+#include "soc/mcpwm_periph.h"
 
-Servo left_servo;
-Servo right_servo;
-
-float flapping_frequency;
-
-
-TaskHandle_t Task1;
-TaskHandle_t Task2;
-
-int pos;
-
-uint32_t current_time, last_time, dif_time;
-
-void paramUpdate( void * pvParameters ){
-  Serial.print("Task1 running on core ");
-  Serial.println(xPortGetCoreID());
-
-  for(;;){
-
-        delay(1);
-    }
-}
-void motorUpdate( void * pvParameters ){
-  Serial.print("Task2 running on core ");
-  Serial.println(xPortGetCoreID());
-  for(;;){
-  
-  uint16_t timing_signal = abs((int) (1000/flapping_frequency));
-  // Serial.print(timing_signal);
-  // Serial.print("\t");
-  current_time = millis();
-
-  if((current_time - last_time) >= (timing_signal) ){
-    // A full period has passed, reset the timer
-    last_time = current_time;
-  }
-
-  // Create a square wave by alternating between two states
-  if ((current_time - last_time) < (int)(timing_signal*0.5)) {
-    // We are in the first half of the period
-    left_servo.write(1500 + (int)(50*7.778f));
-    right_servo.write(1500 - (int)(50*7.778f));
-    // Serial.println(1);
-  } 
-  else{
-    // We are in the second half of the period
-    left_servo.write(1500 + (int)(-10*7.778f));
-    right_servo.write(1500 - (int)(-10*7.778f));
-    // Serial.println(2);
-  }
-
-  // Serial.println((timing_signal*0.5));
-
-  delay(1);
-
-  }
+extern "C" {
+    #include "zenoh-pico.h"
 }
 
-void setup() {
-  Serial.begin(115200);
-  while(!Serial);
-	// ESP32PWM::allocateTimer(0);
-	// ESP32PWM::allocateTimer(1);
-	// ESP32PWM::allocateTimer(2);
-	// ESP32PWM::allocateTimer(3);
+// WiFi-specific parameters
+#define SSID "SSID"
+#define PASS "PASSWORD"
 
-  left_servo.setPeriodHertz(50);
-  left_servo.attach(LEFT, 800, 2200);
+// Zenoh-specific parameters
+#define MODE "client"
+#define URI "/rt/cmd_vel"
 
-  right_servo.setPeriodHertz(50);
-  right_servo.attach(RIGHT, 800, 2200);
+// Measurement specific parameters
+#define X_SCALING_FACTOR 100.0
+#define X_MAX_VALUE 0.20
+#define X_MIN_VALUE -0.20
 
-  xTaskCreatePinnedToCore(
-                    paramUpdate,   /* Task function. */
-                    "Task1",     /* name of task. */
-                    10000,       /* Stack size of task */
-                    NULL,        /* parameter of the task */
-                    1,           /* priority of the task */
-                    &Task1,      /* Task handle to keep track of created task */
-                    0);          /* pin task to core 0 */
-  delay(500);
-  xTaskCreatePinnedToCore(
-                    motorUpdate,   /* Task function. */
-                    "Task2",     /* name of task. */
-                    10000,       /* Stack size of task */
-                    NULL,        /* parameter of the task */
-                    1,           /* priority of the task */
-                    &Task2,      /* Task handle to keep track of created task */
-                    1);          /* pin task to core 0 */
-  delay(500);
+#define Y_SCALING_FACTOR 10.0
+#define Y_MAX_VALUE 2.80
+#define Y_MIN_VALUE -2.80
+
+MPU6050 mpu(Wire);
+double offset_x = 0.0;
+double offset_y = 0.0;
+
+zn_session_t *s = NULL;
+zn_reskey_t *reskey = NULL;
+
+void setup(void)
+{
+    // Set WiFi in STA mode and trigger attachment
+    WiFi.mode(WIFI_STA);
+    WiFi.begin(SSID, PASS);
+    while (WiFi.status() != WL_CONNECTED)
+        delay(1000);
+
+    // Initialize MPU6050
+    Wire.begin();
+    mpu.begin();
+    mpu.calcGyroOffsets(true);
+    mpu.update();
+    offset_x = mpu.getAccAngleX();
+    offset_y = mpu.getAccAngleY();
+
+    // Initialize Zenoh Session and other parameters
+    zn_properties_t *config = zn_config_default();
+    zn_properties_insert(config, ZN_CONFIG_MODE_KEY, z_string_make(MODE));
+
+    s = zn_open(config);
+    if (s == NULL)
+        return;
+
+    znp_start_read_task(s);
+    znp_start_lease_task(s);
+
+    unsigned long rid = zn_declare_resource(s, zn_rname(URI));
+    reskey = (zn_reskey_t*)malloc(sizeof(zn_reskey_t));
+    *reskey = zn_rid(rid);
+
+    delay(1000);
 }
 
-void loop() {
-    flapping_frequency = 2;
-}
+void loop()
+{
+    delay(20);
+    mpu.update();
 
-// void serialEvent(){
-//   if(Serial.available())
-// }
+    double linear_x = (mpu.getAccAngleX() - offset_x) / X_SCALING_FACTOR;
+    linear_x = min(max(linear_x, X_MIN_VALUE), X_MAX_VALUE);
+    if (linear_x < 0.10 && linear_x > -0.10)
+            linear_x = 0;
+
+    double linear_y = (mpu.getAccAngleY() - offset_y) / Y_SCALING_FACTOR;
+    linear_y = min(max(linear_y, Y_MIN_VALUE), Y_MAX_VALUE);
+    if (linear_y < 0.5 && linear_y > -0.5)
+            linear_y = 0;
+
+    Twist measure;
+    measure.linear.x = linear_x;
+    measure.linear.y = 0.0;
+    measure.linear.z = 0.0;
+    measure.angular.x = 0.0;
+    measure.angular.y = 0.0;
+    measure.angular.z = linear_y;
+
+    uint8_t twist_serialized_size = 4 + sizeof(double) * 6;
+    char buf[twist_serialized_size];
+    serialize_twist(&measure, buf);
+
+    if (s == NULL || reskey == NULL)
+        return;
+
+    zn_write(s, *reskey, (const uint8_t *)buf, twist_serialized_size);
+}
