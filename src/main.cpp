@@ -115,16 +115,13 @@ void motorUpdate( void * pvParameters ){
     if(ornibibot_parameter.frequency < 0.5){
         left_servo.writeMicroseconds(degreeToPulse(0));
         right_servo.writeMicroseconds(degreeToPulse(-30)); // to adjust for a different angle between left and right
-        roll_servo.writeMicroseconds(degreeToPulseTail(0));
-        pitch_servo.writeMicroseconds(degreeToPulseTail(30*-1));
     }
 
     else{
         left_servo.writeMicroseconds(degreeToPulse(wing_position));
         right_servo.writeMicroseconds(degreeToPulse(-wing_position)); // to adjust for a different angle between left and right
-        roll_servo.writeMicroseconds(degreeToPulseTail(0));
-        pitch_servo.writeMicroseconds(degreeToPulseTail(30*-1));
     }
+
 
     vTaskDelay(xDelay);
   }
@@ -193,6 +190,15 @@ void loop() {
     flapping_param->amplitude = 60;
     flapping_param->offset = 0;
     deserializeUDP();
+
+    if(ornibibot_parameter.frequency < 0.5){
+      roll_servo.writeMicroseconds(degreeToPulseTail(0));
+      pitch_servo.writeMicroseconds(degreeToPulseTail(30*-1));
+    }
+    else{
+      roll_servo.writeMicroseconds(degreeToPulseTail(ornibibot_parameter.roll));
+      pitch_servo.writeMicroseconds(degreeToPulseTail(ornibibot_parameter.pitch*-1));
+    }
 
     delay(5);
 
