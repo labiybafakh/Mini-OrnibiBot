@@ -8,6 +8,7 @@
 #include "ESP32Servo.h"
 #include <WiFi.h>
 #include <WiFiUdp.h>
+#include <HardwareSerial.h>
 
 const int servoPins[] = {D0, D1, D2, D3};  // Adjust these pins as needed
 
@@ -26,6 +27,9 @@ const int udpPort = 4210;
 IPAddress local_ip(192,168,3,15);
 IPAddress gateway(192,168,3,15);
 IPAddress subnet(255,255,255,0);
+
+
+HardwareSerial SerialPort(0); // use UART1
 
 
 struct flapping{
@@ -66,6 +70,41 @@ uint16_t degreeToPulse(int8_t degree) {
     uint16_t pulse = (uint16_t)((degree - min_angle) * (max_pulse_width - min_pulse_width) / (max_angle - min_angle) + min_pulse_width);
     
     return pulse;
+}
+
+uint16_t degToSignal(int8_t pos){
+    //Rotate Servo from -60 to 60 Degrees
+    //Mid Servo using SBUS is 1023
+    //Upstroke<1023 - Downstroke>1023
+    if(pos>90)         pos=90;
+    else if(pos<-90)   pos=-90;
+
+    return (uint16_t)(1023 - (-pos*11.36)); //reversed to adjust upstroke-downstroke
+}
+
+void setPosition(uint16_t pos_left, uint16_t pos_right){
+    const size_t SBUS_BUFFER = 25;
+    uint8_t packet_sbus[SBUS_BUFFER];
+    memset(packet_sbus, 0x00, SBUS_BUFFER);
+
+    uint16_t zeroing = 0;
+
+    packet_sbus[0] = 0x0f;
+    packet_sbus[1] = (uint8_t)(pos_left & 0xff);
+    packet_sbus[2] = (uint8_t)((pos_left >> 8) & 0x07 ) | ((pos_right  << 3 ) );
+    packet_sbus[3] = (uint8_t)((pos_right >> 5) & 0x3f ) | (zeroing  << 6);
+    packet_sbus[4] = (uint8_t)((zeroing >> 2) & 0xFF);
+
+    // // Fill the rest of the packet with zeros (assuming no other channels are used)
+    // for (int i = 5; i < 23; i++) {
+    //     packet_sbus[i] = 0x00;
+    // }
+
+    // Stop byte(s)
+    packet_sbus[23] = 0x00;
+    packet_sbus[24] = 0x00;
+
+    SerialPort.write(packet_sbus, sizeof(packet_sbus));
 }
 
 uint16_t degreeToPulseTail(int8_t degree) {
@@ -113,13 +152,17 @@ void motorUpdate( void * pvParameters ){
   for(;;){
     
     if(ornibibot_parameter.frequency < 0.5){
-        left_servo.writeMicroseconds(degreeToPulse(0));
-        right_servo.writeMicroseconds(degreeToPulse(-30)); // to adjust for a different angle between left and right
+        setPosition(
+          degToSignal(25),
+          degToSignal(25*-1)
+        );
     }
 
     else{
-        left_servo.writeMicroseconds(degreeToPulse(wing_position));
-        right_servo.writeMicroseconds(degreeToPulse(-wing_position)); // to adjust for a different angle between left and right
+        setPosition(
+          degToSignal(wing_position),
+          degToSignal(wing_position*-1)
+        );
     }
 
 
@@ -144,13 +187,13 @@ void deserializeUDP(){
 void setup() {
   flapping_param = (flapping *) malloc(sizeof(flapping));
 
-  Serial.begin(115200);
+  SerialPort.begin(100000, SERIAL_8E2, D7, D6);  // 1000000 baud, 8E2 config, TX on GPIO7 (D6), RX pin not used (-1)
 
-  left_servo.setPeriodHertz(300);
-  left_servo.attach(servoPins[0], min_pulse_width, max_pulse_width);
+  // left_servo.setPeriodHertz(300);
+  // left_servo.attach(servoPins[0], min_pulse_width, max_pulse_width);
 
-  right_servo.setPeriodHertz(300);
-  right_servo.attach(servoPins[1], min_pulse_width, max_pulse_width);
+  // right_servo.setPeriodHertz(300);
+  // right_servo.attach(servoPins[1], min_pulse_width, max_pulse_width);
 
   pitch_servo.setPeriodHertz(250);
   pitch_servo.attach(servoPins[2], 1100, 1900);
@@ -187,7 +230,8 @@ void setup() {
 }
 
 void loop() {
-    flapping_param->amplitude = 60;
+
+    flapping_param->amplitude = 65;
     flapping_param->offset = 0;
     deserializeUDP();
 
