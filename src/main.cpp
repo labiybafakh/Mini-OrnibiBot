@@ -76,10 +76,10 @@ uint16_t degToSignal(int8_t pos){
     //Rotate Servo from -60 to 60 Degrees
     //Mid Servo using SBUS is 1023
     //Upstroke<1023 - Downstroke>1023
-    if(pos>60)         pos=60;
-    else if(pos<-60)   pos=-60;
+    if(pos>90)         pos=90;
+    else if(pos<-90)   pos=-90;
 
-    return (uint16_t)(1023 - (-pos*17)); //reversed to adjust upstroke-downstroke
+    return (uint16_t)(1023 - (-pos*11.36)); //reversed to adjust upstroke-downstroke
 }
 
 void setPosition(uint16_t pos_left, uint16_t pos_right){
@@ -152,13 +152,10 @@ void motorUpdate( void * pvParameters ){
   for(;;){
     
     if(ornibibot_parameter.frequency < 0.5){
-
         setPosition(
           degToSignal(25),
           degToSignal(25*-1)
         );
-        // left_servo.writeMicroseconds(degreeToPulse(0));
-        // right_servo.writeMicroseconds(degreeToPulse(-30)); // to adjust for a different angle between left and right
     }
 
     else{
@@ -166,8 +163,6 @@ void motorUpdate( void * pvParameters ){
           degToSignal(wing_position),
           degToSignal(wing_position*-1)
         );
-        // left_servo.writeMicroseconds(degreeToPulse(wing_position));
-        // right_servo.writeMicroseconds(degreeToPulse(-wing_position)); // to adjust for a different angle between left and right
     }
 
 
@@ -236,7 +231,7 @@ void setup() {
 
 void loop() {
 
-    flapping_param->amplitude = 60;
+    flapping_param->amplitude = 65;
     flapping_param->offset = 0;
     deserializeUDP();
 
