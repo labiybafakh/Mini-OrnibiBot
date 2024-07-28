@@ -150,18 +150,20 @@ void motorUpdate( void * pvParameters ){
   Serial.println(xPortGetCoreID());
   const TickType_t xDelay = 5 / portTICK_PERIOD_MS;
   for(;;){
+
+    const int adjustment = 8;
     
     if(ornibibot_parameter.frequency < 0.5){
         setPosition(
           degToSignal(25),
-          degToSignal(25*-1)
+          degToSignal((25+adjustment)*-1)
         );
     }
 
     else{
         setPosition(
           degToSignal(wing_position),
-          degToSignal(wing_position*-1)
+          degToSignal((wing_position+adjustment)*-1)
         );
     }
 
