@@ -134,7 +134,10 @@ void paramUpdate( void * pvParameters ){
   for(;;){
 
       uint16_t periode_ = 1000 / ornibibot_parameter.frequency;
-      wing_position = flapping_param->amplitude * sin((2 * M_PI * time_) / periode_) + flapping_param->offset;
+      wing_position = (flapping_param->amplitude * sin((2 * M_PI * time_) / periode_)) + flapping_param->offset;
+
+      if(wing_position > 0) wing_position = flapping_param->amplitude;
+      else wing_position = flapping_param->amplitude * -1;
 
       if (time_ < periode_) {
           time_++;
