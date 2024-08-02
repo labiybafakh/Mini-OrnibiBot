@@ -82,7 +82,7 @@ uint16_t degToSignal(int8_t pos){
     return (uint16_t)(1023 - (-pos*11.36)); //reversed to adjust upstroke-downstroke
 }
 
-void setPosition(uint16_t pos_left, uint16_t pos_right){
+void setPosition(uint16_t pos_left, uint16_t pos_right, uint16_t pos_tail_left, uint16_t pos_tail_right){
     const size_t SBUS_BUFFER = 25;
     uint8_t packet_sbus[SBUS_BUFFER];
     memset(packet_sbus, 0x00, SBUS_BUFFER);
@@ -92,8 +92,10 @@ void setPosition(uint16_t pos_left, uint16_t pos_right){
     packet_sbus[0] = 0x0f;
     packet_sbus[1] = (uint8_t)(pos_left & 0xff);
     packet_sbus[2] = (uint8_t)((pos_left >> 8) & 0x07 ) | ((pos_right  << 3 ) );
-    packet_sbus[3] = (uint8_t)((pos_right >> 5) & 0x3f ) | (zeroing  << 6);
-    packet_sbus[4] = (uint8_t)((zeroing >> 2) & 0xFF);
+    packet_sbus[3] = (uint8_t)((pos_right >> 5) & 0x3f ) | (pos_tail_left  << 6);
+    packet_sbus[4] = (uint8_t)((pos_left >> 2) & 0xFF);
+    packet_sbus[5] = (uint8_t)((pos_tail_left >> 10) & 0x01) | (pos_tail_right << 1);
+    packet_sbus[6] = (uint8_t)(pos_tail_right >> 7) & 0x0f | (zeroing << 4);
 
     // // Fill the rest of the packet with zeros (assuming no other channels are used)
     // for (int i = 5; i < 23; i++) {
@@ -159,14 +161,18 @@ void motorUpdate( void * pvParameters ){
     if(ornibibot_parameter.frequency < 0.5){
         setPosition(
           degToSignal(25),
-          degToSignal((25+adjustment)*-1)
+          degToSignal((25+adjustment)*-1),
+          degToSignal(25),
+          degToSignal(25)
         );
     }
 
     else{
         setPosition(
           degToSignal(wing_position),
-          degToSignal((wing_position+adjustment)*-1)
+          degToSignal((wing_position+adjustment)*-1),
+          degToSignal(30),
+          degToSignal(30)
         );
     }
 
