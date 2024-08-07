@@ -127,6 +127,7 @@ void motorUpdate( void * pvParameters ){
   for(;;){
 
     const int adjustment = 8;
+    const int minimum_pitch_tail = 30;
     
     if(ornibibot_parameter.frequency < 0.5){
 
@@ -135,8 +136,8 @@ void motorUpdate( void * pvParameters ){
         if(ornibibot_parameter.roll > 25) ornibibot_parameter.roll = 25;
         else if(ornibibot_parameter.roll < -25) ornibibot_parameter.roll = -25;
 
-        int8_t left_tail = 35 - ornibibot_parameter.roll;
-        int8_t right_tail = 35 + ornibibot_parameter.roll;
+        int8_t left_tail = minimum_pitch_tail - ornibibot_parameter.roll;
+        int8_t right_tail = minimum_pitch_tail + ornibibot_parameter.roll;
 
         setPosition(
           degToSignal(25),
@@ -146,17 +147,14 @@ void motorUpdate( void * pvParameters ){
         );
     }
 
-    //id 3 -> 2120 90deg, 1520 0 deg
-    //id 4 ->
-
     else{
         if(ornibibot_parameter.pitch < -20) ornibibot_parameter.pitch = -20;
 
         if(ornibibot_parameter.roll > 25) ornibibot_parameter.roll = 25;
         else if(ornibibot_parameter.roll < -25) ornibibot_parameter.roll = -25;
 
-        int8_t left_tail = ornibibot_parameter.pitch - ornibibot_parameter.roll;
-        int8_t right_tail = ornibibot_parameter.pitch + ornibibot_parameter.roll;
+        int8_t left_tail = minimum_pitch_tail + ornibibot_parameter.pitch - ornibibot_parameter.roll;
+        int8_t right_tail = minimum_pitch_tail + ornibibot_parameter.pitch + ornibibot_parameter.roll;
         setPosition(
           degToSignal(wing_position),
           degToSignal((wing_position+adjustment)*-1),
