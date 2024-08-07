@@ -10,12 +10,6 @@
 #include <WiFiUdp.h>
 #include <HardwareSerial.h>
 
-const int servoPins[] = {D0, D1, D2, D3};  // Adjust these pins as needed
-
-Servo left_servo;
-Servo right_servo;
-Servo pitch_servo;
-Servo roll_servo;
 
 WiFiUDP udp;
 
@@ -52,25 +46,7 @@ int pos;
 
 std::atomic<std::int_fast8_t> wing_position;
 
-uint16_t min_pulse_width = 920; // Minimum pulse width in microseconds
-uint16_t max_pulse_width = 2120; // Maximum pulse width in microseconds
-
-int min_angle = -60;       // Minimum angle in degrees
-int max_angle = 60;        // Maximum angle in degrees
-
 ornibibot_param ornibibot_parameter;
-
-uint16_t degreeToPulse(int8_t degree) {
-
-    // Ensure the input degree is within the valid range
-    if (degree < min_angle) degree = min_angle;
-    if (degree > max_angle) degree = max_angle;
-    
-    // Perform linear mapping
-    uint16_t pulse = (uint16_t)((degree - min_angle) * (max_pulse_width - min_pulse_width) / (max_angle - min_angle) + min_pulse_width);
-    
-    return pulse;
-}
 
 uint16_t degToSignal(int8_t pos){
     //Rotate Servo from -60 to 60 Degrees
@@ -82,7 +58,17 @@ uint16_t degToSignal(int8_t pos){
     return (uint16_t)(1023 - (-pos*11.36)); //reversed to adjust upstroke-downstroke
 }
 
-void setPosition(uint16_t pos_left, uint16_t pos_right){
+uint16_t degToSignalTail(int8_t pos){
+    //Rotate Servo from -60 to 60 Degrees
+    //Mid Servo using SBUS is 1023
+    //Upstroke<1023 - Downstroke>1023
+    if(pos>80)         pos=80;
+    else if(pos<-80)   pos=-80;
+
+    return (uint16_t)(1023 - (-pos*12.79)); //reversed to adjust upstroke-downstroke
+}
+
+void setPosition(uint16_t pos_left, uint16_t pos_right, uint16_t pos_tail_left, uint16_t pos_tail_right){
     const size_t SBUS_BUFFER = 25;
     uint8_t packet_sbus[SBUS_BUFFER];
     memset(packet_sbus, 0x00, SBUS_BUFFER);
@@ -92,8 +78,10 @@ void setPosition(uint16_t pos_left, uint16_t pos_right){
     packet_sbus[0] = 0x0f;
     packet_sbus[1] = (uint8_t)(pos_left & 0xff);
     packet_sbus[2] = (uint8_t)((pos_left >> 8) & 0x07 ) | ((pos_right  << 3 ) );
-    packet_sbus[3] = (uint8_t)((pos_right >> 5) & 0x3f ) | (zeroing  << 6);
-    packet_sbus[4] = (uint8_t)((zeroing >> 2) & 0xFF);
+    packet_sbus[3] = (uint8_t)((pos_right >> 5) & 0x3f ) | (pos_tail_left  << 6);
+    packet_sbus[4] = (uint8_t)((pos_tail_left >> 2) & 0xFF);
+    packet_sbus[5] = (uint8_t)((pos_tail_left >> 10) & 0x01) | (pos_tail_right << 1);
+    packet_sbus[6] = (uint8_t)(pos_tail_right >> 7) & 0x0f | (zeroing << 4);
 
     // // Fill the rest of the packet with zeros (assuming no other channels are used)
     // for (int i = 5; i < 23; i++) {
@@ -107,22 +95,6 @@ void setPosition(uint16_t pos_left, uint16_t pos_right){
     SerialPort.write(packet_sbus, sizeof(packet_sbus));
 }
 
-uint16_t degreeToPulseTail(int8_t degree) {
-    uint16_t min_pulse_width_ = 1100; // Minimum pulse width in microseconds
-    uint16_t max_pulse_width_ = 1900; // Maximum pulse width in microseconds
-
-    int min_angle_ = -45;       // Minimum angle in degrees
-    int max_angle_ = 45;        // Maximum angle in degrees
-
-    // Ensure the input degree is within the valid range
-    if (degree < min_angle_) degree = min_angle_;
-    if (degree > max_angle_) degree = max_angle_;
-    
-    // Perform linear mapping
-    uint16_t pulse = (uint16_t)((degree - min_angle_) * (max_pulse_width_ - min_pulse_width_) / (max_angle_ - min_angle_) + min_pulse_width_);
-    
-    return pulse;
-}
 
 flapping *flapping_param;
 
@@ -157,16 +129,39 @@ void motorUpdate( void * pvParameters ){
     const int adjustment = 8;
     
     if(ornibibot_parameter.frequency < 0.5){
+
+        if(ornibibot_parameter.pitch < -20) ornibibot_parameter.pitch = -20;
+
+        if(ornibibot_parameter.roll > 25) ornibibot_parameter.roll = 25;
+        else if(ornibibot_parameter.roll < -25) ornibibot_parameter.roll = -25;
+
+        int8_t left_tail = 35 - ornibibot_parameter.roll;
+        int8_t right_tail = 35 + ornibibot_parameter.roll;
+
         setPosition(
           degToSignal(25),
-          degToSignal((25+adjustment)*-1)
+          degToSignal((25+adjustment)*-1),
+          degToSignalTail(left_tail),
+          degToSignalTail(right_tail*-1)
         );
     }
 
+    //id 3 -> 2120 90deg, 1520 0 deg
+    //id 4 ->
+
     else{
+        if(ornibibot_parameter.pitch < -20) ornibibot_parameter.pitch = -20;
+
+        if(ornibibot_parameter.roll > 25) ornibibot_parameter.roll = 25;
+        else if(ornibibot_parameter.roll < -25) ornibibot_parameter.roll = -25;
+
+        int8_t left_tail = ornibibot_parameter.pitch - ornibibot_parameter.roll;
+        int8_t right_tail = ornibibot_parameter.pitch + ornibibot_parameter.roll;
         setPosition(
           degToSignal(wing_position),
-          degToSignal((wing_position+adjustment)*-1)
+          degToSignal((wing_position+adjustment)*-1),
+          degToSignalTail(left_tail),
+          degToSignalTail(right_tail*-1)
         );
     }
 
@@ -187,24 +182,13 @@ void deserializeUDP(){
         ornibibot_parameter.pitch = (int8_t) buffer[2];
     }
 
+
 }
 
 void setup() {
   flapping_param = (flapping *) malloc(sizeof(flapping));
 
   SerialPort.begin(100000, SERIAL_8E2, D7, D6);  // 1000000 baud, 8E2 config, TX on GPIO7 (D6), RX pin not used (-1)
-
-  // left_servo.setPeriodHertz(300);
-  // left_servo.attach(servoPins[0], min_pulse_width, max_pulse_width);
-
-  // right_servo.setPeriodHertz(300);
-  // right_servo.attach(servoPins[1], min_pulse_width, max_pulse_width);
-
-  pitch_servo.setPeriodHertz(250);
-  pitch_servo.attach(servoPins[2], 1100, 1900);
-
-  roll_servo.setPeriodHertz(250);
-  roll_servo.attach(servoPins[3], 1100, 1900);
 
   WiFi.mode(WIFI_AP);
   WiFi.softAP(ssid, password);
@@ -239,15 +223,6 @@ void loop() {
     flapping_param->amplitude = 65;
     flapping_param->offset = 0;
     deserializeUDP();
-
-    if(ornibibot_parameter.frequency < 0.5){
-      roll_servo.writeMicroseconds(degreeToPulseTail(0));
-      pitch_servo.writeMicroseconds(degreeToPulseTail(30*-1));
-    }
-    else{
-      roll_servo.writeMicroseconds(degreeToPulseTail(ornibibot_parameter.roll));
-      pitch_servo.writeMicroseconds(degreeToPulseTail(ornibibot_parameter.pitch*-1));
-    }
 
     delay(5);
 
