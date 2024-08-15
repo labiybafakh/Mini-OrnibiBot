@@ -127,7 +127,7 @@ void motorUpdate( void * pvParameters ){
   for(;;){
 
     const int adjustment = 8;
-    const int minimum_pitch_tail = 45;
+    const int minimum_pitch_tail = 25;
     
     if(ornibibot_parameter.frequency < 0.5){
 
@@ -139,8 +139,6 @@ void motorUpdate( void * pvParameters ){
         int8_t left_tail = minimum_pitch_tail + ornibibot_parameter.pitch;
         int8_t right_tail = minimum_pitch_tail + ornibibot_parameter.pitch;
 
-        if(ornibibot_parameter.roll >=1) right_tail += ornibibot_parameter.roll;
-        else if(ornibibot_parameter.roll<=-1) left_tail -=ornibibot_parameter.roll; 
 
         setPosition(
           degToSignal(25),
@@ -158,9 +156,6 @@ void motorUpdate( void * pvParameters ){
 
         int8_t left_tail = minimum_pitch_tail + ornibibot_parameter.pitch;
         int8_t right_tail = minimum_pitch_tail + ornibibot_parameter.pitch;
-
-        if(ornibibot_parameter.roll >=1) right_tail += ornibibot_parameter.roll;
-        else if(ornibibot_parameter.roll<=-1) left_tail -=ornibibot_parameter.roll; 
         
         setPosition(
           degToSignal(wing_position),
@@ -225,7 +220,7 @@ void setup() {
 
 void loop() {
 
-    flapping_param->amplitude = 75;
+    flapping_param->amplitude = 70;
     flapping_param->offset = 0;
     deserializeUDP();
 
