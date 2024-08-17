@@ -43,6 +43,7 @@ TaskHandle_t Task1;
 TaskHandle_t Task2;
 
 int pos;
+int payload=0;
 
 std::atomic<std::int_fast8_t> wing_position;
 
@@ -139,7 +140,6 @@ void motorUpdate( void * pvParameters ){
         int8_t left_tail = minimum_pitch_tail + ornibibot_parameter.pitch;
         int8_t right_tail = minimum_pitch_tail + ornibibot_parameter.pitch;
 
-
         setPosition(
           degToSignal(25),
           degToSignal((25+adjustment)*-1),
@@ -157,12 +157,22 @@ void motorUpdate( void * pvParameters ){
         int8_t left_tail = minimum_pitch_tail + ornibibot_parameter.pitch;
         int8_t right_tail = minimum_pitch_tail + ornibibot_parameter.pitch;
         
-        setPosition(
+        if(payload==100){
+          setPosition(
           degToSignal(wing_position),
           degToSignal((wing_position+adjustment)*-1),
           degToSignalTail(left_tail),
           degToSignalTail(right_tail*-1)
         );
+        }
+        else{
+          setPosition(
+          degToSignal(wing_position+ornibibot_parameter.roll),
+          degToSignal((wing_position+adjustment-ornibibot_parameter.roll)*-1),
+          degToSignalTail(left_tail),
+          degToSignalTail(right_tail*-1)
+        );
+        }
     }
 
 
@@ -220,7 +230,8 @@ void setup() {
 
 void loop() {
 
-    flapping_param->amplitude = 70;
+    if(payload == 100) flapping_param->amplitude = 70;
+    else flapping_param->amplitude = 60;
     flapping_param->offset = 0;
     deserializeUDP();
 
