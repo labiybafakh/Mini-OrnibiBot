@@ -128,49 +128,39 @@ void motorUpdate( void * pvParameters ){
   for(;;){
 
     const int adjustment = 8;
-    const int minimum_pitch_tail = 25;
+    const int minimum_pitch_tail = 20;
     
     if(ornibibot_parameter.frequency < 0.5){
 
-        // if(ornibibot_parameter.pitch < -20) ornibibot_parameter.pitch = -20;
+        int8_t tail = minimum_pitch_tail + ornibibot_parameter.pitch;
 
-        // if(ornibibot_parameter.roll > 25) ornibibot_parameter.roll = 25;
-        // else if(ornibibot_parameter.roll < -25) ornibibot_parameter.roll = -25;
-
-        int8_t left_tail = minimum_pitch_tail + ornibibot_parameter.pitch;
-        int8_t right_tail = minimum_pitch_tail + ornibibot_parameter.pitch;
 
         setPosition(
           degToSignal(25),
           degToSignal((25+adjustment)*-1),
-          degToSignalTail(left_tail),
-          degToSignalTail(right_tail*-1)
+          degToSignalTail(tail*-1),
+          degToSignalTail(tail)
         );
     }
 
     else{
-        // if(ornibibot_parameter.pitch < -0) ornibibot_parameter.pitch = -20;
 
-        // if(ornibibot_parameter.roll > 25) ornibibot_parameter.roll = 25;
-        // else if(ornibibot_parameter.roll < -25) ornibibot_parameter.roll = -25;
-
-        int8_t left_tail = minimum_pitch_tail + ornibibot_parameter.pitch;
-        int8_t right_tail = minimum_pitch_tail + ornibibot_parameter.pitch;
+        int8_t tail = minimum_pitch_tail + ornibibot_parameter.pitch;
         
         if(payload==100){
           setPosition(
           degToSignal(wing_position),
           degToSignal((wing_position+adjustment)*-1),
-          degToSignalTail(left_tail),
-          degToSignalTail(right_tail*-1)
+          degToSignalTail(tail*-1),
+          degToSignalTail(tail)
         );
         }
         else{
           setPosition(
           degToSignal(wing_position+ornibibot_parameter.roll),
           degToSignal((wing_position+adjustment-ornibibot_parameter.roll)*-1),
-          degToSignalTail(left_tail),
-          degToSignalTail(right_tail*-1)
+          degToSignalTail(tail*-1),
+          degToSignalTail(tail)
         );
         }
     }
@@ -230,8 +220,9 @@ void setup() {
 
 void loop() {
 
-    if(payload == 100) flapping_param->amplitude = 70;
-    else flapping_param->amplitude = 60;
+    // if(payload == 100) flapping_param->amplitude = 70;
+    // else flapping_param->amplitude = 60;
+    flapping_param->amplitude = 70;
     flapping_param->offset = 0;
     deserializeUDP();
 
