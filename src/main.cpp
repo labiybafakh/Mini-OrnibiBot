@@ -69,7 +69,7 @@ uint16_t degToSignalTail(int8_t pos){
     return (uint16_t)(1023 - (-pos*12.79)); //reversed to adjust upstroke-downstroke
 }
 
-void setPosition(uint16_t pos_left, uint16_t pos_right, uint16_t pos_tail_left, uint16_t pos_tail_right){
+void setPosition(uint16_t pos_left, uint16_t pos_right, uint16_t pos_tail_roll, uint16_t pos_tail_pitch) {
     const size_t SBUS_BUFFER = 25;
     uint8_t packet_sbus[SBUS_BUFFER];
     memset(packet_sbus, 0x00, SBUS_BUFFER);
@@ -77,12 +77,12 @@ void setPosition(uint16_t pos_left, uint16_t pos_right, uint16_t pos_tail_left, 
     uint16_t zeroing = 0;
 
     packet_sbus[0] = 0x0f;
-    packet_sbus[1] = (uint8_t)(pos_left & 0xff);
-    packet_sbus[2] = (uint8_t)((pos_left >> 8) & 0x07 ) | ((pos_right  << 3 ) );
-    packet_sbus[3] = (uint8_t)((pos_right >> 5) & 0x3f ) | (pos_tail_left  << 6);
-    packet_sbus[4] = (uint8_t)((pos_tail_left >> 2) & 0xFF);
-    packet_sbus[5] = (uint8_t)((pos_tail_left >> 10) & 0x01) | (pos_tail_right << 1);
-    packet_sbus[6] = (uint8_t)(pos_tail_right >> 7) & 0x0f | (zeroing << 4);
+    packet_sbus[1] = (uint8_t)(pos_right & 0xff);
+    packet_sbus[2] = (uint8_t)((pos_right >> 8) & 0x07 ) | ((pos_left  << 3 ) );
+    packet_sbus[3] = (uint8_t)((pos_left >> 5) & 0x3f ) | (pos_tail_roll  << 6);
+    packet_sbus[4] = (uint8_t)((pos_tail_roll >> 2) & 0xFF);
+    packet_sbus[5] = (uint8_t)((pos_tail_roll >> 10) & 0x01) | (pos_tail_pitch << 1);
+    packet_sbus[6] = (uint8_t)(pos_tail_pitch >> 7) & 0x0f | (zeroing << 4);
 
     // // Fill the rest of the packet with zeros (assuming no other channels are used)
     // for (int i = 5; i < 23; i++) {
@@ -109,8 +109,8 @@ void paramUpdate( void * pvParameters ){
       uint16_t periode_ = 1000 / ornibibot_parameter.frequency;
       wing_position = (flapping_param->amplitude * sin((2 * M_PI * time_) / periode_)) + flapping_param->offset;
 
-      if(wing_position > 0) wing_position = flapping_param->amplitude;
-      else wing_position = flapping_param->amplitude * -1;
+      // if(wing_position > 0) wing_position = flapping_param->amplitude;
+      // else wing_position = flapping_param->amplitude * -1;
 
       if (time_ < periode_) {
           time_++;
@@ -127,7 +127,7 @@ void motorUpdate( void * pvParameters ){
   const TickType_t xDelay = 5 / portTICK_PERIOD_MS;
   for(;;){
 
-    const int adjustment = 8;
+    const int adjustment = 0;
     const int minimum_pitch_tail = 20;
     
     if(ornibibot_parameter.frequency < 0.5){
@@ -136,8 +136,8 @@ void motorUpdate( void * pvParameters ){
 
 
         setPosition(
-          degToSignal(25),
-          degToSignal((25+adjustment)*-1),
+          degToSignal((25+ornibibot_parameter.roll)*-1),
+          degToSignal((25-ornibibot_parameter.roll+adjustment)),
           degToSignalTail(tail*-1),
           degToSignalTail(tail)
         );
@@ -149,16 +149,16 @@ void motorUpdate( void * pvParameters ){
         
         if(payload==100){
           setPosition(
-          degToSignal(wing_position),
-          degToSignal((wing_position+adjustment)*-1),
+          degToSignal(wing_position*-1),
+          degToSignal((wing_position+adjustment)),
           degToSignalTail(tail*-1),
           degToSignalTail(tail)
         );
         }
         else{
           setPosition(
-          degToSignal(wing_position+ornibibot_parameter.roll),
-          degToSignal((wing_position+adjustment-ornibibot_parameter.roll)*-1),
+          degToSignal((wing_position+ornibibot_parameter.roll)*-1),
+          degToSignal((wing_position+adjustment-ornibibot_parameter.roll)),
           degToSignalTail(tail*-1),
           degToSignalTail(tail)
         );
@@ -224,7 +224,14 @@ void loop() {
     // else flapping_param->amplitude = 60;
     flapping_param->amplitude = 70;
     flapping_param->offset = 0;
+    // ornibibot_parameter.frequency = 5.0;
     deserializeUDP();
+
+    // if(WiFi.status() != WL_DISCONNECTED){
+    //   ornibibot_parameter.frequency = 0.0;
+    //   // SerialPort.print(incomingPacket[0]);
+    //   // digitalWrite(LED_BUILTIN, HIGH);
+    // }
 
     delay(5);
 
