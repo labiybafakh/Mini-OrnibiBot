@@ -121,13 +121,14 @@ void paramUpdate( void * pvParameters ){
       delay(xDelay);
     }
 }
+
 void motorUpdate( void * pvParameters ){
   Serial.print("Task2 running on core ");
   Serial.println(xPortGetCoreID());
   const TickType_t xDelay = 5 / portTICK_PERIOD_MS;
   for(;;){
 
-    const int adjustment = 0;
+    const int adjustment = -5;
     const int minimum_pitch_tail = 20;
     
     if(ornibibot_parameter.frequency < 0.5){
@@ -147,28 +148,77 @@ void motorUpdate( void * pvParameters ){
 
         int8_t tail = minimum_pitch_tail + ornibibot_parameter.pitch;
         
-        if(payload==100){
-          setPosition(
-          degToSignal(wing_position*-1),
-          degToSignal((wing_position+adjustment)),
-          degToSignalTail(tail*-1),
-          degToSignalTail(tail)
-        );
-        }
-        else{
+        // if(payload==100){
+        //   setPosition(
+        //   degToSignal(wing_position*-1),
+        //   degToSignal((wing_position+adjustment)),
+        //   degToSignalTail(tail*-1),
+        //   degToSignalTail(tail)
+        // );
+        // }
+        // else{
           setPosition(
           degToSignal((wing_position+ornibibot_parameter.roll)*-1),
           degToSignal((wing_position+adjustment-ornibibot_parameter.roll)),
           degToSignalTail(tail*-1),
           degToSignalTail(tail)
         );
-        }
+        // }
     }
 
 
     vTaskDelay(xDelay);
   }
 }
+
+// void motorUpdate( void * pvParameters ){
+//   Serial.print("Task2 running on core ");
+//   Serial.println(xPortGetCoreID());
+//   const TickType_t xDelay = 5 / portTICK_PERIOD_MS;
+//   for(;;){
+
+//     const int adjustment = 0;
+//     const int minimum_pitch_tail = 20;
+    
+//     if(ornibibot_parameter.frequency < 0.5){
+
+//         int8_t tail = minimum_pitch_tail + ornibibot_parameter.pitch;
+
+
+//         setPosition(
+//           degToSignal((25)*-1),
+//           degToSignal((25+adjustment)),
+//           degToSignalTail(ornibibot_parameter.roll),
+//           degToSignalTail(tail)
+//         );
+//     }
+
+//     else{
+
+//         int8_t tail = minimum_pitch_tail + ornibibot_parameter.pitch;
+        
+//         if(payload==100){
+//           setPosition(
+//           degToSignal(wing_position*-1),
+//           degToSignal((wing_position+adjustment)),
+//           degToSignalTail(ornibibot_parameter.roll),
+//           degToSignalTail(tail)
+//         );
+//         }
+//         else{
+//           setPosition(
+//           degToSignal((wing_position)*-1),
+//           degToSignal((wing_position+adjustment)),
+//           degToSignalTail(ornibibot_parameter.roll),
+//           degToSignalTail(tail)
+//         );
+//         }
+//     }
+
+
+//     vTaskDelay(xDelay);
+//   }
+// }
 
 void deserializeUDP(){
     uint8_t buffer[3] = {0, 0, 0};
@@ -222,16 +272,23 @@ void loop() {
 
     // if(payload == 100) flapping_param->amplitude = 70;
     // else flapping_param->amplitude = 60;
-    flapping_param->amplitude = 70;
+    flapping_param->amplitude = 7;
     flapping_param->offset = 0;
     // ornibibot_parameter.frequency = 5.0;
-    deserializeUDP();
 
-    // if(WiFi.status() != WL_DISCONNECTED){
-    //   ornibibot_parameter.frequency = 0.0;
-    //   // SerialPort.print(incomingPacket[0]);
-    //   // digitalWrite(LED_BUILTIN, HIGH);
-    // }
+    if(WiFi.status() != WL_DISCONNECTED){
+        deserializeUDP();
+
+      // ornibibot_parameter.frequency = 0.0;
+      // SerialPort.print(incomingPacket[0]);
+      digitalWrite(LED_BUILTIN, HIGH);
+    }
+    else{
+            ornibibot_parameter.frequency = 0.0;
+
+          digitalWrite(LED_BUILTIN, LOW);
+
+    }
 
     delay(5);
 
