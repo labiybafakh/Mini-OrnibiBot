@@ -109,8 +109,8 @@ void paramUpdate( void * pvParameters ){
       uint16_t periode_ = 1000 / ornibibot_parameter.frequency;
       wing_position = (flapping_param->amplitude * sin((2 * M_PI * time_) / periode_)) + flapping_param->offset;
 
-      // if(wing_position > 0) wing_position = flapping_param->amplitude;
-      // else wing_position = flapping_param->amplitude * -1;
+      if(wing_position > 0) wing_position = flapping_param->amplitude;
+      else wing_position = flapping_param->amplitude * -1;
 
       if (time_ < periode_) {
           time_++;
@@ -128,7 +128,7 @@ void motorUpdate( void * pvParameters ){
   const TickType_t xDelay = 5 / portTICK_PERIOD_MS;
   for(;;){
 
-    const int adjustment = -5;
+    const int adjustment = -10;
     const int minimum_pitch_tail = 20;
     
     if(ornibibot_parameter.frequency < 0.5){
@@ -137,8 +137,8 @@ void motorUpdate( void * pvParameters ){
 
 
         setPosition(
-          degToSignal((25+ornibibot_parameter.roll)*-1),
           degToSignal((25-ornibibot_parameter.roll+adjustment)),
+          degToSignal((25+ornibibot_parameter.roll)*-1),
           degToSignalTail(tail*-1),
           degToSignalTail(tail)
         );
@@ -158,8 +158,8 @@ void motorUpdate( void * pvParameters ){
         // }
         // else{
           setPosition(
+          degToSignal((wing_position-ornibibot_parameter.roll+adjustment)),
           degToSignal((wing_position+ornibibot_parameter.roll)*-1),
-          degToSignal((wing_position+adjustment-ornibibot_parameter.roll)),
           degToSignalTail(tail*-1),
           degToSignalTail(tail)
         );
@@ -272,7 +272,7 @@ void loop() {
 
     // if(payload == 100) flapping_param->amplitude = 70;
     // else flapping_param->amplitude = 60;
-    flapping_param->amplitude = 7;
+    flapping_param->amplitude = 60;
     flapping_param->offset = 0;
     // ornibibot_parameter.frequency = 5.0;
 
