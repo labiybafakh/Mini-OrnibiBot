@@ -10,6 +10,18 @@
 #include <WiFiUdp.h>
 #include <HardwareSerial.h>
 
+enum ServoType{
+  SBUS = 0,
+  PWM = 1
+};
+
+const ServoType SERVO_TYPE = PWM; 
+
+// PWM servo pins 
+const int LEFT_WING_PIN = 1;
+const int RIGHT_WING_PIN = 2;
+const int TAIL_ROLL_PIN = 5;
+const int TAIL_PITCH_PIN = 18;
 
 WiFiUDP udp;
 
@@ -49,51 +61,72 @@ std::atomic<std::int_fast8_t> wing_position;
 
 ornibibot_param ornibibot_parameter;
 
-uint16_t degToSignal(int8_t pos){
-    //Rotate Servo from -60 to 60 Degrees
-    //Mid Servo using SBUS is 1023
-    //Upstroke<1023 - Downstroke>1023
-    if(pos>90)         pos=90;
-    else if(pos<-90)   pos=-90;
+// PWM servo objects (only used when SERVO_TYPE = PWM)
+Servo leftWingServo;
+Servo rightWingServo; 
+Servo tailRollServo;
+Servo tailPitchServo;
 
-    return (uint16_t)(1023 - (-pos*11.36)); //reversed to adjust upstroke-downstroke
+uint16_t degToSignal(int8_t pos){
+    // Limit position to safe range
+    if(pos > 70)       pos = 70;
+    else if(pos < -70) pos = -70;
+
+    if(SERVO_TYPE == SBUS) {
+        // SBUS: Mid = 1023, range for ±70 degrees
+        if(pos > 90)       pos = 90;
+        else if(pos < -90) pos = -90;
+        return (uint16_t)(1023 - (-pos * 11.36));
+    } else {
+        // PWM: 900-2100μs range for ±70 degrees, center = 1500μs
+        return (uint16_t)(1500 + (pos * (1200.0/140.0))); // 1200μs range / 140° total = 8.57μs/degree
+    }
 }
 
 uint16_t degToSignalTail(int8_t pos){
-    //Rotate Servo from -60 to 60 Degrees
-    //Mid Servo using SBUS is 1023
-    //Upstroke<1023 - Downstroke>1023
-    if(pos>80)         pos=80;
-    else if(pos<-80)   pos=-80;
+    // Limit position to safe range
+    if(pos > 70)       pos = 70;
+    else if(pos < -70) pos = -70;
 
-    return (uint16_t)(1023 - (-pos*12.79)); //reversed to adjust upstroke-downstroke
+    if(SERVO_TYPE == SBUS) {
+        // SBUS: Mid = 1023, range for ±80 degrees
+        if(pos > 80)       pos = 80;
+        else if(pos < -80) pos = -80;
+        return (uint16_t)(1023 - (-pos * 12.79));
+    } else {
+        // PWM: 900-2100μs range for ±70 degrees, center = 1500μs
+        return (uint16_t)(1500 + (pos * (1200.0/140.0))); // Same calculation as wing servos
+    }
 }
 
 void setPosition(uint16_t pos_left, uint16_t pos_right, uint16_t pos_tail_roll, uint16_t pos_tail_pitch) {
-    const size_t SBUS_BUFFER = 25;
-    uint8_t packet_sbus[SBUS_BUFFER];
-    memset(packet_sbus, 0x00, SBUS_BUFFER);
+    if(SERVO_TYPE == SBUS) {
+        // SBUS mode: Send SBUS packet
+        const size_t SBUS_BUFFER = 25;
+        uint8_t packet_sbus[SBUS_BUFFER];
+        memset(packet_sbus, 0x00, SBUS_BUFFER);
 
-    uint16_t zeroing = 0;
+        uint16_t zeroing = 0;
 
-    packet_sbus[0] = 0x0f;
-    packet_sbus[1] = (uint8_t)(pos_right & 0xff);
-    packet_sbus[2] = (uint8_t)((pos_right >> 8) & 0x07 ) | ((pos_left  << 3 ) );
-    packet_sbus[3] = (uint8_t)((pos_left >> 5) & 0x3f ) | (pos_tail_roll  << 6);
-    packet_sbus[4] = (uint8_t)((pos_tail_roll >> 2) & 0xFF);
-    packet_sbus[5] = (uint8_t)((pos_tail_roll >> 10) & 0x01) | (pos_tail_pitch << 1);
-    packet_sbus[6] = (uint8_t)(pos_tail_pitch >> 7) & 0x0f | (zeroing << 4);
+        packet_sbus[0] = 0x0f;
+        packet_sbus[1] = (uint8_t)(pos_right & 0xff);
+        packet_sbus[2] = (uint8_t)((pos_right >> 8) & 0x07 ) | ((pos_left  << 3 ) );
+        packet_sbus[3] = (uint8_t)((pos_left >> 5) & 0x3f ) | (pos_tail_roll  << 6);
+        packet_sbus[4] = (uint8_t)((pos_tail_roll >> 2) & 0xFF);
+        packet_sbus[5] = (uint8_t)((pos_tail_roll >> 10) & 0x01) | (pos_tail_pitch << 1);
+        packet_sbus[6] = (uint8_t)(pos_tail_pitch >> 7) & 0x0f | (zeroing << 4);
 
-    // // Fill the rest of the packet with zeros (assuming no other channels are used)
-    // for (int i = 5; i < 23; i++) {
-    //     packet_sbus[i] = 0x00;
-    // }
+        packet_sbus[23] = 0x00;
+        packet_sbus[24] = 0x00;
 
-    // Stop byte(s)
-    packet_sbus[23] = 0x00;
-    packet_sbus[24] = 0x00;
-
-    SerialPort.write(packet_sbus, sizeof(packet_sbus));
+        SerialPort.write(packet_sbus, sizeof(packet_sbus));
+    } else {
+        // PWM mode: Control servos directly (333Hz frequency)
+        leftWingServo.writeMicroseconds(pos_left);
+        rightWingServo.writeMicroseconds(pos_right);
+        tailRollServo.writeMicroseconds(pos_tail_roll);
+        tailPitchServo.writeMicroseconds(pos_tail_pitch);
+    }
 }
 
 
@@ -127,14 +160,11 @@ void motorUpdate( void * pvParameters ){
   Serial.println(xPortGetCoreID());
   const TickType_t xDelay = 5 / portTICK_PERIOD_MS;
   for(;;){
-
     const int adjustment = 0;
     const int minimum_pitch_tail = 20;
     
     if(ornibibot_parameter.frequency < 0.5){
-
         int8_t tail = minimum_pitch_tail + ornibibot_parameter.pitch;
-
 
         setPosition(
           degToSignal((25+ornibibot_parameter.roll-adjustment)),
@@ -145,18 +175,8 @@ void motorUpdate( void * pvParameters ){
     }
 
     else{
-
         int8_t tail = minimum_pitch_tail + ornibibot_parameter.pitch;
         
-        // if(payload==100){
-        //   setPosition(
-        //   degToSignal(wing_position*-1),
-        //   degToSignal((wing_position+adjustment)),
-        //   degToSignalTail(tail*-1),
-        //   degToSignalTail(tail)
-        // );
-        // }
-        // else{
           setPosition(
           degToSignal((wing_position+ornibibot_parameter.roll-adjustment)),
           degToSignal((wing_position-ornibibot_parameter.roll)*-1),
@@ -166,59 +186,9 @@ void motorUpdate( void * pvParameters ){
         // }
     }
 
-
     vTaskDelay(xDelay);
   }
 }
-
-// void motorUpdate( void * pvParameters ){
-//   Serial.print("Task2 running on core ");
-//   Serial.println(xPortGetCoreID());
-//   const TickType_t xDelay = 5 / portTICK_PERIOD_MS;
-//   for(;;){
-
-//     const int adjustment = 0;
-//     const int minimum_pitch_tail = 20;
-    
-//     if(ornibibot_parameter.frequency < 0.5){
-
-//         int8_t tail = minimum_pitch_tail + ornibibot_parameter.pitch;
-
-
-//         setPosition(
-//           degToSignal((25)*-1),
-//           degToSignal((25+adjustment)),
-//           degToSignalTail(ornibibot_parameter.roll),
-//           degToSignalTail(tail)
-//         );
-//     }
-
-//     else{
-
-//         int8_t tail = minimum_pitch_tail + ornibibot_parameter.pitch;
-        
-//         if(payload==100){
-//           setPosition(
-//           degToSignal(wing_position*-1),
-//           degToSignal((wing_position+adjustment)),
-//           degToSignalTail(ornibibot_parameter.roll),
-//           degToSignalTail(tail)
-//         );
-//         }
-//         else{
-//           setPosition(
-//           degToSignal((wing_position)*-1),
-//           degToSignal((wing_position+adjustment)),
-//           degToSignalTail(ornibibot_parameter.roll),
-//           degToSignalTail(tail)
-//         );
-//         }
-//     }
-
-
-//     vTaskDelay(xDelay);
-//   }
-// }
 
 void deserializeUDP(){
     uint8_t buffer[3] = {0, 0, 0};
@@ -231,14 +201,28 @@ void deserializeUDP(){
         ornibibot_parameter.roll = (int8_t) buffer[1];
         ornibibot_parameter.pitch = (int8_t) buffer[2];
     }
-
-
 }
 
 void setup() {
   flapping_param = (flapping *) malloc(sizeof(flapping));
 
-  SerialPort.begin(100000, SERIAL_8E2, D7, D6);  // 1000000 baud, 8E2 config, TX on GPIO7 (D6), RX pin not used (-1)
+  // Initialize servo system based on type
+  if(SERVO_TYPE == SBUS) {
+    // SBUS setup
+    SerialPort.begin(100000, SERIAL_8E2, D7, D6);
+  } else {
+    // PWM setup: Attach servos with 333Hz frequency (3000μs period)
+    leftWingServo.attach(LEFT_WING_PIN, 900, 2100);
+    rightWingServo.attach(RIGHT_WING_PIN, 900, 2100);
+    tailRollServo.attach(TAIL_ROLL_PIN, 900, 2100);
+    tailPitchServo.attach(TAIL_PITCH_PIN, 900, 2100);
+    
+    // Set PWM frequency to 333Hz for all servos
+    leftWingServo.setPeriodHertz(333);
+    rightWingServo.setPeriodHertz(333);
+    tailRollServo.setPeriodHertz(333);
+    tailPitchServo.setPeriodHertz(333);
+  }
 
   WiFi.mode(WIFI_AP);
   WiFi.softAP(ssid, password);
