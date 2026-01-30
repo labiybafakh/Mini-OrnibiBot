@@ -37,10 +37,13 @@ struct ornibibot_param{
   std::atomic<float> frequency;
   std::atomic<int8_t> roll;
   std::atomic<int8_t> pitch;
+  std::atomic<bool> auto_mode;
 };
 
 TaskHandle_t Task1;
 TaskHandle_t Task2;
+TaskHandle_t Task3;
+TaskHandle_t Task4;
 
 int pos;
 int payload=0;
@@ -97,13 +100,29 @@ void setPosition(uint16_t pos_left, uint16_t pos_right, uint16_t pos_tail_roll, 
 }
 
 
+void deserializeUDP(){
+    uint8_t buffer[4] = {0, 0, 0};
+    int packetSize = udp.parsePacket();
+
+    if(packetSize>2){
+        udp.read(buffer, sizeof(buffer));
+
+        ornibibot_parameter.frequency = (float)buffer[0]*0.1f;
+        ornibibot_parameter.roll = (int8_t) buffer[1];
+        ornibibot_parameter.pitch = (int8_t) buffer[2];
+        ornibibot_parameter.auto_mode = (buffer[3] != 0);
+    }
+
+
+}
+
 flapping *flapping_param;
 
 void paramUpdate( void * pvParameters ){
   Serial.print("Task1 running on core ");
   Serial.println(xPortGetCoreID());
   int time_ = 0;
-  const TickType_t xDelay = 1 / portTICK_PERIOD_MS;
+  TickType_t xLastWakeTime = xTaskGetTickCount();
   for(;;){
 
       uint16_t periode_ = 1000 / ornibibot_parameter.frequency;
@@ -118,14 +137,16 @@ void paramUpdate( void * pvParameters ){
           time_ = 0;
       }
         
-      delay(xDelay);
-    }
+    vTaskDelayUntil(&xLastWakeTime, pdMS_TO_TICKS(1)); // deterministic 1ms sampling rate
+  }
 }
 
 void motorUpdate( void * pvParameters ){
   Serial.print("Task2 running on core ");
   Serial.println(xPortGetCoreID());
-  const TickType_t xDelay = 5 / portTICK_PERIOD_MS;
+  // const TickType_t xDelay = 5 / portTICK_PERIOD_MS;
+  TickType_t xLastWakeTime = xTaskGetTickCount();
+
   for(;;){
 
     const int adjustment = 0;
@@ -134,7 +155,6 @@ void motorUpdate( void * pvParameters ){
     if(ornibibot_parameter.frequency < 0.5){
 
         int8_t tail = minimum_pitch_tail + ornibibot_parameter.pitch;
-
 
         setPosition(
           degToSignal((25+ornibibot_parameter.roll-adjustment)),
@@ -148,15 +168,6 @@ void motorUpdate( void * pvParameters ){
 
         int8_t tail = minimum_pitch_tail + ornibibot_parameter.pitch;
         
-        // if(payload==100){
-        //   setPosition(
-        //   degToSignal(wing_position*-1),
-        //   degToSignal((wing_position+adjustment)),
-        //   degToSignalTail(tail*-1),
-        //   degToSignalTail(tail)
-        // );
-        // }
-        // else{
           setPosition(
           degToSignal((wing_position+ornibibot_parameter.roll-adjustment)),
           degToSignal((wing_position-ornibibot_parameter.roll)*-1),
@@ -166,79 +177,65 @@ void motorUpdate( void * pvParameters ){
         // }
     }
 
+    vTaskDelayUntil(&xLastWakeTime, pdMS_TO_TICKS(5)); // deterministic 5ms sampling rate
+  }
+}
 
+void commandSBCUpdate( void * pvParameters ){
+  Serial.print("Task3 running on core ");
+  Serial.println(xPortGetCoreID());
+  const TickType_t xDelay = pdMS_TO_TICKS(2);
+  
+  uint8_t receivedData = 0;
+  uint8_t dataToSend = 0;
+  
+  for(;;){
+    if(Serial.available() >= 1 && ornibibot_parameter.auto_mode.load() == true){
+      receivedData = Serial.read();
+      ornibibot_parameter.roll.store(static_cast<int8_t>(receivedData));
+    }
+    
+    if (ornibibot_parameter.auto_mode.load() == false){
+      dataToSend = 0;
+    }
+    else{
+      dataToSend = 1;
+    }
+    Serial.write(dataToSend);
+    
     vTaskDelay(xDelay);
   }
 }
 
-// void motorUpdate( void * pvParameters ){
-//   Serial.print("Task2 running on core ");
-//   Serial.println(xPortGetCoreID());
-//   const TickType_t xDelay = 5 / portTICK_PERIOD_MS;
-//   for(;;){
+void remoteUpdate( void * pvParameters ){
+  Serial.print("Task4 running on core ");
+  Serial.println(xPortGetCoreID());
+  const TickType_t xDelay = pdMS_TO_TICKS(20);
+  for(;;){
 
-//     const int adjustment = 0;
-//     const int minimum_pitch_tail = 20;
-    
-//     if(ornibibot_parameter.frequency < 0.5){
+    flapping_param->amplitude = 60;
+    flapping_param->offset = 0;
+    ornibibot_parameter.frequency = 5.0;
 
-//         int8_t tail = minimum_pitch_tail + ornibibot_parameter.pitch;
-
-
-//         setPosition(
-//           degToSignal((25)*-1),
-//           degToSignal((25+adjustment)),
-//           degToSignalTail(ornibibot_parameter.roll),
-//           degToSignalTail(tail)
-//         );
-//     }
-
-//     else{
-
-//         int8_t tail = minimum_pitch_tail + ornibibot_parameter.pitch;
-        
-//         if(payload==100){
-//           setPosition(
-//           degToSignal(wing_position*-1),
-//           degToSignal((wing_position+adjustment)),
-//           degToSignalTail(ornibibot_parameter.roll),
-//           degToSignalTail(tail)
-//         );
-//         }
-//         else{
-//           setPosition(
-//           degToSignal((wing_position)*-1),
-//           degToSignal((wing_position+adjustment)),
-//           degToSignalTail(ornibibot_parameter.roll),
-//           degToSignalTail(tail)
-//         );
-//         }
-//     }
-
-
-//     vTaskDelay(xDelay);
-//   }
-// }
-
-void deserializeUDP(){
-    uint8_t buffer[3] = {0, 0, 0};
-    int packetSize = udp.parsePacket();
-
-    if(packetSize>2){
-        udp.read(buffer, sizeof(buffer));
-
-        ornibibot_parameter.frequency = (float)buffer[0]*0.1f;
-        ornibibot_parameter.roll = (int8_t) buffer[1];
-        ornibibot_parameter.pitch = (int8_t) buffer[2];
+    if(WiFi.status() != WL_DISCONNECTED){
+      deserializeUDP();
+      digitalWrite(LED_BUILTIN, HIGH);
     }
-
-
+    else{
+        ornibibot_parameter.frequency = 0.0;
+        digitalWrite(LED_BUILTIN, LOW);
+    }
+    vTaskDelay(xDelay);
+  }
 }
+
 
 void setup() {
   flapping_param = (flapping *) malloc(sizeof(flapping));
+  Serial.begin(115200);
 
   SerialPort.begin(100000, SERIAL_8E2, D7, D6);  // 1000000 baud, 8E2 config, TX on GPIO7 (D6), RX pin not used (-1)
+  SerialPort.setRxInvert(true); // Invert RX line if needed
 
   WiFi.mode(WIFI_AP);
   WiFi.softAP(ssid, password);
@@ -264,7 +261,24 @@ void setup() {
                     &Task2,      /* Task handle to keep track of created task */
                     1);          /* pin task to core 0 */
   delay(500);
-
+  xTaskCreatePinnedToCore(
+                    commandSBCUpdate,   /* Task function. */
+                    "Task3",     /* name of task. */
+                    10000,       /* Stack size of task */
+                    NULL,        /* parameter of the task */
+                    2,           /* priority of the task */
+                    &Task3,      /* Task handle to keep track of created task */
+                    1);          /* pin task to core 0 */
+  delay(500);
+  xTaskCreatePinnedToCore(
+                    remoteUpdate,   /* Task function. */
+                    "Task4",     /* name of task. */
+                    10000,       /* Stack size of task */
+                    NULL,        /* parameter of the task */
+                    1,           /* priority of the task */
+                    &Task4,      /* Task handle to keep track of created task */
+                    1);          /* pin task to core 0 */
+  delay(500);
 
 }
 
@@ -272,24 +286,7 @@ void loop() {
 
     // if(payload == 100) flapping_param->amplitude = 70;
     // else flapping_param->amplitude = 60;
-    flapping_param->amplitude = 60;
-    flapping_param->offset = 0;
-    // ornibibot_parameter.frequency = 5.0;
 
-    if(WiFi.status() != WL_DISCONNECTED){
-        deserializeUDP();
 
-      // ornibibot_parameter.frequency = 0.0;
-      // SerialPort.print(incomingPacket[0]);
-      digitalWrite(LED_BUILTIN, HIGH);
-    }
-    else{
-            ornibibot_parameter.frequency = 0.0;
-
-          digitalWrite(LED_BUILTIN, LOW);
-
-    }
-
-    delay(5);
-
+    vTaskDelay(1000 / portTICK_PERIOD_MS);
 }
