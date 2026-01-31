@@ -178,11 +178,13 @@ void commandSBCUpdate( void * pvParameters ){
   
   uint8_t receivedData = 0;
   uint8_t dataToSend = 0;
+  int8_t temp_roll = 0;
   
   for(;;){
     if(Serial.available() >= 1 && ornibibot_parameter.auto_mode.load() == true){
       receivedData = Serial.read();
-      ornibibot_parameter.roll.store(static_cast<int8_t>(receivedData));
+      temp_roll = (int8_t) -127 + receivedData;
+      ornibibot_parameter.roll = temp_roll;
     }
     
     if (ornibibot_parameter.auto_mode.load() == false){
