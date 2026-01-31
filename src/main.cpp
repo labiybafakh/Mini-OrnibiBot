@@ -101,17 +101,7 @@ void setPosition(uint16_t pos_left, uint16_t pos_right, uint16_t pos_tail_roll, 
 
 
 void deserializeUDP(){
-    uint8_t buffer[4] = {0, 0, 0};
-    int packetSize = udp.parsePacket();
 
-    if(packetSize>2){
-        udp.read(buffer, sizeof(buffer));
-
-        ornibibot_parameter.frequency = (float)buffer[0]*0.1f;
-        ornibibot_parameter.roll = (int8_t) buffer[1];
-        ornibibot_parameter.pitch = (int8_t) buffer[2];
-        ornibibot_parameter.auto_mode = (buffer[3] != 0);
-    }
 
 
 }
@@ -211,14 +201,31 @@ void remoteUpdate( void * pvParameters ){
   Serial.print("Task4 running on core ");
   Serial.println(xPortGetCoreID());
   const TickType_t xDelay = pdMS_TO_TICKS(20);
+
+  uint8_t buffer[4] = {0, 0, 0};
+
+  int8_t temp_roll_ = 0;
+
   for(;;){
 
     flapping_param->amplitude = 60;
     flapping_param->offset = 0;
-    ornibibot_parameter.frequency = 5.0;
 
     if(WiFi.status() != WL_DISCONNECTED){
-      deserializeUDP();
+      int packetSize = udp.parsePacket();
+
+      if(packetSize>3){
+          udp.read(buffer, sizeof(buffer));
+          
+          ornibibot_parameter.frequency = (float)buffer[0]*0.1f;
+          temp_roll_ = (int8_t) buffer[1];
+          ornibibot_parameter.pitch = (int8_t) buffer[2];
+          ornibibot_parameter.auto_mode = (buffer[3] != 0);
+
+          if(ornibibot_parameter.auto_mode.load() == false){
+              ornibibot_parameter.roll = temp_roll_;
+          }
+      }
       digitalWrite(LED_BUILTIN, HIGH);
     }
     else{
